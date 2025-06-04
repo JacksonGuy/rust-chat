@@ -58,11 +58,17 @@ impl Login {
 
     // Get the current input size in bytes
     fn byte_index(&self) -> usize {
-        match self.input_select {
-            0 => self.address_input.chars().count(),
-            1 => self.username_input.chars().count(),
-            _ => 0,
-        }
+        let string = match self.input_select {
+            0 => self.address_input.clone(),
+            1 => self.username_input.clone(),
+            _ => String::new(),
+        };
+
+        string
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(self.character_index)
+            .unwrap_or(string.len())
     }
 
     fn enter_char(&mut self, c: char) {

@@ -89,7 +89,11 @@ impl Chat {
 
     // Get the current input size in bytes
     fn byte_index(&self) -> usize {
-        self.input.chars().count()
+        self.input
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(self.character_index)
+            .unwrap_or(self.input.len())
     }
 
     fn enter_char(&mut self, c: char) {
