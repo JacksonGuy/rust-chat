@@ -1,4 +1,5 @@
 use std::process;
+use std::thread;
 use std::time::Duration;
 use std::io::{self, BufWriter, Write};
 use std::net::{TcpStream};
@@ -12,16 +13,57 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 
-use crate::net::{ClientState, Packet, PacketType};
+use crate::core::login::Login;
+use crate::core::net::{self, ClientState, Packet, PacketType,};
 
-pub struct App {
+pub struct App {}
+
+impl App {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn run(&self, mut terminal: DefaultTerminal) -> io::Result<()> {
+        // Create and run login 
+        let mut login = Login::new();
+        {
+            let _ = login.run(&mut terminal);
+        }
+        let (uid, username, reader, writer) = login.get_results();
+
+        // Create shared state
+        let state = Arc::new(Mutex::new(ClientState::default()));
+
+        // Add self to state
+        {
+            let mut s = state.lock().unwrap();
+            s.users.insert(uid, username.clone());
+            s.username = username;
+        }
+
+        // Create and run chat
+        let chat = Chat::new(writer, uid);
+
+        // Create threads
+        let state_clone = state.clone();
+        let listen_thread = thread::spawn(move || net::server_listen(reader, state_clone));
+        let ui_thread = thread::spawn(move || chat.run(terminal, state));
+        
+        listen_thread.join().unwrap();
+        let _ = ui_thread.join().unwrap();
+
+        Ok(())
+    }
+}
+
+pub struct Chat {
     input: String,
     character_index: usize,
     stream: BufWriter<TcpStream>,
     user_id: u32,
 }
 
-impl App {
+impl Chat {
     pub fn new(stream: BufWriter<TcpStream>, uid: u32) -> Self {
         Self {
             input: String::new(),
@@ -139,7 +181,7 @@ impl App {
                     match key.code {
                         KeyCode::Esc => {
                             ratatui::restore();
-                            process::exit(1);
+                            process::exit(0);
                         },
                         KeyCode::Enter => self.submit_message(),
                         KeyCode::Char(to_insert) => self.enter_char(to_insert),
