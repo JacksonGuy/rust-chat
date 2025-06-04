@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use core::fmt;
-use std::time::Duration;
 use std::sync::{Arc};
-use async_std::task;
 use serde::{Serialize, Deserialize};
 use tokio::{
     io::{AsyncWriteExt, AsyncReadExt, BufReader, BufWriter},
@@ -64,9 +62,6 @@ async fn handle_client(
     sender: Sender<Packet>,
     state: Arc<Mutex<ServerState>>,
 ) -> std::io::Result<()> {
-    println!("[SERVER] Client thread started");
-    task::sleep(Duration::from_millis(100)).await;
-
     // Subscribe to broadcast channel
     let mut receiver = sender.subscribe();
 
@@ -76,7 +71,6 @@ async fn handle_client(
     let mut writer = BufWriter::new(write);
 
     // Send UID to client
-    println!("[SERVER] Sending UID to client...");
     let uid: u32 = rand::random::<u32>();
     let packet: Packet = Packet {
         packet_type: PacketType::IDAssign,
@@ -87,10 +81,8 @@ async fn handle_client(
         .expect("[ERROR] Failed to serialize packet");
     writer.write(data.as_bytes()).await?;
     writer.flush().await?;
-    println!("[SERVER] UID Sent");
 
     // Get username from client
-    println!("[SERVER] Waiting for username...");
     let mut buffer = [0; 1024];
     let mut packet = loop {
         let _ = reader.read(&mut buffer).await;
@@ -102,7 +94,6 @@ async fn handle_client(
             break packet;
         }
     };
-    println!("[SERVER] Username Receieved");
 
     // Create user object for new client
     packet.contents = packet.contents.trim().to_string();
@@ -170,8 +161,12 @@ async fn handle_client(
                 let packet_clone = packet.clone();
                 match packet.packet_type {
                     PacketType::UsernameChange => {
-                        local.name = packet.contents;
-                        
+                        local.name = packet.contents.clone();
+                        {
+                            let mut s = state.lock().await;
+                            let user = s.user_list.get_mut(&local.uid).unwrap();
+                            user.name = packet.contents.clone();
+                        }
                     },
                     PacketType::NewMessage => {
                         let message = Message {
@@ -183,7 +178,6 @@ async fn handle_client(
                             let mut s = state.lock().await;
                             s.message_list.push(message.clone());
                         }
-                        println!("{}", message);
                     },
                     _ => {
                         println!("[SERVER] Unknown packet received");
@@ -198,7 +192,8 @@ async fn handle_client(
             channel_read_result = receiver.recv() => {
                 if let Ok(packet) = channel_read_result {
                     if packet.user_id != local.uid ||
-                        packet.packet_type == PacketType::NewMessage
+                        packet.packet_type == PacketType::NewMessage ||
+                        packet.packet_type == PacketType::UsernameChange
                     {
                         let data = serde_json::to_string(&packet).unwrap();
                         let _ = writer.write(data.as_bytes()).await?;

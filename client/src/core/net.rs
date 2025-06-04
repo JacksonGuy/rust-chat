@@ -64,7 +64,9 @@ pub fn server_listen(mut stream: BufReader<TcpStream>, state: Arc<Mutex<ClientSt
             PacketType::UsernameChange => {
                 let user = s.users.get_mut(&packet.user_id)
                     .expect("[ERROR] User does not exist");
-                *user = packet.contents;
+                let old_name = user.clone();
+                *user = packet.contents.clone();
+                s.messages.push(format!("{} changed their name to {}", old_name, packet.contents.clone()));
             },
             PacketType::NewMessage => {
                 let username = s.users.get(&packet.user_id)

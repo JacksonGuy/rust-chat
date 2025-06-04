@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
     layout::{Constraint, Layout,},
-    style::{Style,},
+    style::{Style, Stylize},
     text::{Line,},
     widgets::{Block, List, Paragraph, ListItem},
     DefaultTerminal, Frame,
@@ -68,19 +68,61 @@ impl App {
     }
 
     fn submit_message(&mut self) {
-        let packet = Packet {
-            packet_type: PacketType::NewMessage,
-            user_id: self.user_id,
-            contents: self.input.clone(),
+        let start = match self.input.chars().nth(0) {
+            Some(c) => c,
+            None => '!'
         };
 
-        let data = serde_json::to_string(&packet)
-            .expect("[ERROR] Failed to serialize packet");
-        let _ = self.stream.write(data.as_bytes());
-        self.stream.flush().expect("[ERROR] Failed to send message");
+        match start {
+            '/' => {
+                let packet = self.parse_command(self.input.clone());
+                match packet {
+                    None => (),
+                    Some(packet) => {
+                        let data = serde_json::to_string(&packet)
+                            .expect("[ERROR] Failed to serialize packet");
+                        let _ = self.stream.write(data.as_bytes());
+                        self.stream.flush().expect("[ERROR] Failed to send message");
+                    }
+                }
+            },
+            '!' => (),
+            _ => {
+                let packet = Packet {
+                    packet_type: PacketType::NewMessage,
+                    user_id: self.user_id,
+                    contents: self.input.clone(),
+                };
+                let data = serde_json::to_string(&packet)
+                    .expect("[ERROR] Failed to serialize packet");
+                let _ = self.stream.write(data.as_bytes());
+                self.stream.flush().expect("[ERROR] Failed to send message");
+            }
+        }
 
         self.input.clear();
         self.character_index = 0;
+    }
+
+    fn parse_command(&mut self, command: String) -> Option<Packet> {
+        let tokens: Vec<&str> = command.split_whitespace().collect();
+        
+        if tokens.len() < 2 {
+            return None
+        }
+
+        let first = tokens[0];
+
+        match first {
+            "/name" => {
+                Some(Packet {
+                    packet_type: PacketType::UsernameChange,
+                    user_id: self.user_id,
+                    contents: tokens[1].to_string(),
+                })
+            },
+            _ => None
+        }
     }
 
     // Run this as a separate thread
@@ -130,7 +172,14 @@ impl App {
             .iter()
             .enumerate()
             .map(|(_, message)| {
-                let item = Line::from(message.clone());
+                let start = message.chars().nth(0).unwrap();
+                let item;
+                if start == '(' {
+                    item = Line::from(message.clone());
+                }
+                else {
+                    item = Line::from(message.clone()).red();
+                }
                 ListItem::new(item)
             })
             .collect();
