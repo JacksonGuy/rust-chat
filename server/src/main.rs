@@ -236,7 +236,7 @@ async fn main() -> std::io::Result<()> {
     loop {
         // Accept connection
         let (client_stream, _) = listener.accept().await?;
-        println!("[SERVER] Connected Received.");
+        println!("[SERVER] Connected Received");
 
         // Create task to handle connection
         let channel_clone = channel.clone();
